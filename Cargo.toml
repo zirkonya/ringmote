@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+anyhow = "1.0.99"
+btleplug = { version = "0.11.8", optional = true }
+rdev = { git = "https://github.com/Narsil/rdev.git", features = ["wayland", "serialize"] }
+tokio = { version = "1.47.1", features = ["full"] }
+
+[features]
+default = ["tcp"]
+bluetooth = ["dep:btleplug"]
+tcp = []
