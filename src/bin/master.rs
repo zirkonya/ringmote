@@ -1,10 +1,7 @@
-use std::time::Duration;
-
-use ringmote::session::backend::tcp::TcpMaster;
+use ringmote::session::master::Master;
 
 #[tokio::main]
 async fn main() {
-    std::thread::sleep(Duration::from_millis(2000));
-    let master = TcpMaster::new().await;
+    let master = Master::new().await;
     master.run().await
 }

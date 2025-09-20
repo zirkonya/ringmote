@@ -1,6 +1,5 @@
-use std::sync::mpsc::Sender;
-
 use rdev::EventType;
+use std::sync::mpsc::{Receiver, Sender};
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -23,31 +22,26 @@ impl TcpSlave {
         }
     }
 
-    async fn read_message(&mut self, master: &mut TcpStream) -> Vec<u8> {
+    async fn read_message(&mut self, master: &mut TcpStream) -> tokio::io::Result<Vec<u8>> {
         let mut buffer = Vec::new();
-        master.read_buf(&mut buffer).await.unwrap();
-        buffer
+        master.read_buf(&mut buffer).await?;
+        Ok(buffer)
     }
 
     pub async fn run(mut self) {
         loop {
             if let Ok((mut master, _addr)) = self.listener.accept().await {
-                let message = self.read_message(&mut master).await;
-                println!(
-                    "{}",
-                    message
-                        .iter()
-                        .map(|b| format!("{b:02x}"))
-                        .collect::<Vec<String>>()
-                        .join(" ")
-                );
-                // DESERIALIZE
-                self.sender
-                    .send(EventType::KeyPress(rdev::Key::KeyA))
-                    .unwrap();
-                self.sender
-                    .send(EventType::KeyRelease(rdev::Key::KeyA))
-                    .unwrap();
+                while let Ok(message) = self.read_message(&mut master).await {
+                    println!("{}", String::from_utf8_lossy(&message));
+                    match serde_json::from_slice(&message) {
+                        Ok(input) => {
+                            if let Err(err) = self.sender.send(input) {
+                                eprintln!("{err:?}");
+                            }
+                        }
+                        Err(err) => eprintln!("{err:?}"),
+                    }
+                }
             }
         }
     }
@@ -55,23 +49,33 @@ impl TcpSlave {
 
 pub struct TcpMaster {
     stream: TcpStream,
+    receiver: Receiver<EventType>,
 }
 
 impl TcpMaster {
-    pub async fn new() -> Self {
+    pub async fn new(receiver: Receiver<EventType>) -> Self {
         Self {
             stream: TcpStream::connect(format!("localhost:{DEFAULT_TCP_PORT}"))
                 .await
                 .unwrap(),
+            receiver,
         }
     }
 
     async fn send_message(&mut self, message: &[u8]) {
-        self.stream.write(message).await.unwrap();
+        self.stream.write_all(message).await.unwrap();
         self.stream.flush().await.unwrap();
     }
 
+    fn serialize_input(input: &EventType) -> Vec<u8> {
+        serde_json::to_vec(&input).unwrap()
+    }
+
     pub async fn run(mut self) {
-        self.send_message(b"Hello World").await;
+        loop {
+            let input = self.receiver.recv().expect("ERROR");
+            let message = Self::serialize_input(&input);
+            self.send_message(&message).await
+        }
     }
 }

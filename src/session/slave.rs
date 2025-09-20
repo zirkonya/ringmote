@@ -22,6 +22,7 @@ impl Slave {
         tokio::task::spawn(self.backend.run());
         for input in self.receiver.iter() {
             println!("{input:?}");
+            #[cfg(not(feature = "without_simulation"))]
             rdev::simulate(&input).unwrap()
         }
     }
